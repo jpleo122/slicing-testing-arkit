@@ -191,7 +191,7 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         
         let vertices = decodeVertices(node: node)
         let indices = decodeIndices(node: node)
-        let normals = decodeNormal(node: node)
+        var normals = decodeNormal(node: node)
         
         if vertices == nil || indices == nil {
             print("Couldn't decode geometry")
@@ -213,11 +213,14 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         
         // make scn node from decomposed source and elements
         let source = SCNGeometrySource(vertices: slicedVertices)
+        let element = SCNGeometryElement(indices: slicedIndices, primitiveType: (node.geometry?.elements.first?.primitiveType)!)
+        
+        normals = decodeNormal(node: SCNNode(geometry: SCNGeometry(sources: [source], elements: [element])))
         let normalSource = SCNGeometrySource(normals: normals!)
 //        [indices![0], indices![1], indices![2]]
-        let element = SCNGeometryElement(indices: slicedIndices, primitiveType: (node.geometry?.elements.first?.primitiveType)!)
+        
 
-        let geometry = SCNGeometry(sources: [source], elements: [element])
+        let geometry = SCNGeometry(sources: [source, normalSource], elements: [element])
         
                 
         return SCNNode(geometry: geometry)
@@ -342,7 +345,7 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         
         
 //        newVertices = [SCNVector3.init(x: 0, y: 0, z: 0), SCNVector3.init(x: 1, y: 1, z: 1), SCNVector3.init(x: 2, y: 2, z: 2), SCNVector3.init(x: 3, y: 3, z: 3), SCNVector3.init(x: 4, y: 4, z: 4), SCNVector3.init(x: 5, y: 5, z: 5)]
-//        
+//
 //        deletedVertices = [SCNVector3.init(x: 6, y: 6, z: 6), SCNVector3.init(x: 7, y: 7, z: 7), SCNVector3.init(x: 8, y: 8, z: 8), SCNVector3.init(x: 9, y: 9, z: 9)]
 //
 //
