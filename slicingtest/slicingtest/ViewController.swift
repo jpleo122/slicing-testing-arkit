@@ -191,6 +191,7 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         
         let vertices = decodeVertices(node: node)
         let indices = decodeIndices(node: node)
+        let normals = decodeNormal(node: node)
         
         if vertices == nil || indices == nil {
             print("Couldn't decode geometry")
@@ -207,14 +208,17 @@ class ViewController: UIViewController, ARSCNViewDelegate {
 
         // make scn node from decomposed source and elements
         let source = SCNGeometrySource(vertices: transVert)
+        let normalSource = SCNGeometrySource(normals: normals!)
 //        [indices![0], indices![1], indices![2]]
         let element = SCNGeometryElement(indices: indices!, primitiveType: (node.geometry?.elements.first?.primitiveType)!)
 
-        let geometry = SCNGeometry(sources: [source], elements: [element])
+        let geometry = SCNGeometry(sources: [source, normalSource], elements: [element])
+        
                 
         return SCNNode(geometry: geometry)
+        
+        // sceneView.scene.rootNode.addChildNode(self.decodeTube)
 
-//        sceneView.scene.rootNode.addChildNode(self.decodeTube)
     }
     
     func decodeVertices(node: SCNNode) -> [SCNVector3]? {
@@ -240,9 +244,34 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         return nil
     }
     
-    func decodeIndices(node: SCNNode) -> [Int32]? {
+    func decodeNormal(node: SCNNode) -> [SCNVector3]? {
+        let nodeSources = node.geometry?.sources(for: SCNGeometrySource.Semantic.normal)
+        if let nodeSource = nodeSources?.first {
+            let stride = nodeSource.dataStride
+            let offset = nodeSource.dataOffset
+            let componentsPerVector = nodeSource.componentsPerVector
+            let bytesPerVector = componentsPerVector * nodeSource.bytesPerComponent
+
+            let vectors = [SCNVector3](repeating: SCNVector3Zero, count: nodeSource.vectorCount)
+            let vertices = vectors.enumerated().map({
+                (index: Int, element: SCNVector3) -> SCNVector3 in
+                let vectorData = UnsafeMutablePointer<Float>.allocate(capacity: componentsPerVector)
+                let byteRange = Range(NSMakeRange(index * stride + offset, bytesPerVector))
+                let buffer = UnsafeMutableBufferPointer(start: vectorData, count: componentsPerVector)
+                nodeSource.data.copyBytes(to: buffer, from: byteRange)
+                return SCNVector3Make(buffer[0], buffer[1], buffer[2])
+            })
+            
+            return vertices
+        }
+        return nil
+    }
+    
+    func decodeIndices(node: SCNNode) -> [UInt32]? {
         let nodeElements = node.geometry?.elements
-        if let nodeElement = nodeElements?.first {
+        print(nodeElements!.count)
+        var appendTo: [UInt32] = []
+        for nodeElement in nodeElements! {
             let bytesPerIndex = nodeElement.bytesPerIndex
             let primitiveType = nodeElement.primitiveType
             let primitiveCount = nodeElement.primitiveCount
@@ -250,20 +279,21 @@ class ViewController: UIViewController, ARSCNViewDelegate {
             // only decodes indices for triangles
             if primitiveType == SCNGeometryPrimitiveType.triangles {
                 // 3 is used because of triangles
-                let indexVector = [Int32](repeating: 0, count: primitiveCount * 3)
+                let indexVector = [UInt32](repeating: 0, count: primitiveCount * 3)
                 let indices = indexVector.enumerated().map({
-                    (index: Int, element: Int32) -> Int32 in
-                    let indexData = UnsafeMutablePointer<Int32>.allocate(capacity: 1)
-                    let byteRange = Range(NSMakeRange(index, bytesPerIndex))
+                    (index: Int, element: UInt32) -> UInt32 in
+                    let indexData = UnsafeMutablePointer<UInt32>.allocate(capacity: 1)
+                    let byteRange = Range(NSMakeRange(index * bytesPerIndex, bytesPerIndex))
                     let buffer = UnsafeMutableBufferPointer(start: indexData, count: 1)
                     nodeElement.data.copyBytes(to: buffer, from: byteRange)
-                    return Int32(buffer[0])
+                    return UInt32(buffer[0])
                 })
-                
-                return indices
+                for ind in indices{
+                    appendTo.append(ind)
+                }
             }
         }
-        return nil
+        return appendTo
     }
     
     func slice(vertices: [SCNVector3], transform: simd_float4x4, plane: simd_float4) -> [SCNVector3] {
@@ -328,10 +358,11 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         let initTubeNode = sceneView.scene.rootNode.childNode(withName: "tubeNode", recursively: false)!
         
         self.decodeTube = decodeGeom(node: initTubeNode, scale: 0.33)
+        sceneView.scene.rootNode.addChildNode(self.decodeTube)
         self.decodeTube.transform = initTubeNode.transform
         
-        sceneView.scene.rootNode.childNodes.filter({ $0.name == "tubeNode" }).forEach({ $0.removeFromParentNode() })
-        sceneView.scene.rootNode.addChildNode(self.decodeTube)
+       sceneView.scene.rootNode.childNodes.filter({ $0.name == "tubeNode" }).forEach({ $0.removeFromParentNode() })
+       sceneView.scene.rootNode.addChildNode(self.decodeTube)
         
 //        plotSphere(planePos: simd_float2(x: 0.02, y: 0.02))
 //
