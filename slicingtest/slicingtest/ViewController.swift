@@ -204,15 +204,20 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         
         let transVert = vertices!.map{SCNVector3Make($0.x * scale, $0.y * scale, $0.z * scale)}
         
-//        let slicedVertices = slice(vertices: transVert, transform: node.simdTransform, plane: self.planeEquation)
-
+        let returnSlice = slice(vertices: transVert, transform: node.simdTransform, plane: self.planeEquation, indices: indices!)
+        
+        let slicedVertices = returnSlice.0
+        let slicedIndices = returnSlice.1
+        
+        print(slicedIndices)
+        
         // make scn node from decomposed source and elements
-        let source = SCNGeometrySource(vertices: transVert)
+        let source = SCNGeometrySource(vertices: slicedVertices)
         let normalSource = SCNGeometrySource(normals: normals!)
 //        [indices![0], indices![1], indices![2]]
-        let element = SCNGeometryElement(indices: indices!, primitiveType: (node.geometry?.elements.first?.primitiveType)!)
+        let element = SCNGeometryElement(indices: slicedIndices, primitiveType: (node.geometry?.elements.first?.primitiveType)!)
 
-        let geometry = SCNGeometry(sources: [source, normalSource], elements: [element])
+        let geometry = SCNGeometry(sources: [source], elements: [element])
         
                 
         return SCNNode(geometry: geometry)
@@ -296,8 +301,26 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         return appendTo
     }
     
-    func slice(vertices: [SCNVector3], transform: simd_float4x4, plane: simd_float4) -> [SCNVector3] {
+    func slice(vertices: [SCNVector3], transform: simd_float4x4, plane: simd_float4, indices: [UInt32]) -> ([SCNVector3], [UInt32]) {
+       
+        print(vertices)
+        // Part 1
+        
+        var arrayOfTriangles = [[SCNVector3]]()
+        for i in stride(from: 0, to: indices.count, by: 3){
+            var triangle = [SCNVector3]()
+            for j in stride(from: i, to: i + 3, by: 1){
+                triangle.append(vertices[Int(indices[j])])
+            }
+            arrayOfTriangles.append(triangle)
+        }
+        
+        print(arrayOfTriangles)
+        
+        // Part 2
+        
         var newVertices = [SCNVector3]()
+        var deletedVertices = [SCNVector3]()
         for vertex in vertices {
             let tempVec = simd_float4(x: vertex.x, y: vertex.y, z: vertex.z, w: 1)
             var worldVec = transform * tempVec
@@ -312,8 +335,55 @@ class ViewController: UIViewController, ARSCNViewDelegate {
 //                print(plane)
 //                print(distance)
             }
+            else {
+                deletedVertices.append(vertex)
+            }
         }
-        return newVertices
+        
+        
+//        newVertices = [SCNVector3.init(x: 0, y: 0, z: 0), SCNVector3.init(x: 1, y: 1, z: 1), SCNVector3.init(x: 2, y: 2, z: 2), SCNVector3.init(x: 3, y: 3, z: 3), SCNVector3.init(x: 4, y: 4, z: 4), SCNVector3.init(x: 5, y: 5, z: 5)]
+//        
+//        deletedVertices = [SCNVector3.init(x: 6, y: 6, z: 6), SCNVector3.init(x: 7, y: 7, z: 7), SCNVector3.init(x: 8, y: 8, z: 8), SCNVector3.init(x: 9, y: 9, z: 9)]
+//
+//
+//        arrayOfTriangles = [[SCNVector3.init(x: 3, y: 3, z: 3), SCNVector3.init(x: 1, y: 1, z: 1), SCNVector3.init(x: 5, y: 5, z: 5)], [SCNVector3.init(x: 6, y: 6, z: 6), SCNVector3.init(x: 4, y: 4, z: 4), SCNVector3.init(x: 5, y: 5, z: 5)],
+//        [SCNVector3.init(x: 7, y: 7, z: 7), SCNVector3.init(x: 8, y: 8, z: 8), SCNVector3.init(x: 1, y: 1, z: 1)],
+//        [SCNVector3.init(x: 7, y: 7, z: 7), SCNVector3.init(x: 8, y: 8, z: 8), SCNVector3.init(x: 9, y: 9, z: 9)]]
+        
+        // Part 3
+        
+        for i in stride(from: arrayOfTriangles.count - 1, to: 0, by: -1) {
+            let arrayAtIndex = arrayOfTriangles[i]
+            var bool = true
+            for deletedVertex in deletedVertices {
+                if bool {
+                    for elem in arrayAtIndex {
+                        if elem.x == deletedVertex.x && elem.y == deletedVertex.y && elem.z == deletedVertex.z {
+                            arrayOfTriangles.remove(at: i)
+                            bool = false
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Part 4
+        
+        var newIndices = [UInt32]()
+        for triangle in arrayOfTriangles {
+            for elem in triangle {
+                var count = 0
+                for vertex in newVertices {
+                    if vertex.x == elem.x && vertex.y == elem.y && vertex.z == elem.z {
+                        newIndices.append(UInt32(count))
+                    }
+                    count += 1
+                }
+            }
+        }
+        
+        
+        return (newVertices, newIndices)
     }
     
     func obj2SCNNode(name: String) -> SCNNode? {
