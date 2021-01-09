@@ -197,33 +197,43 @@ class ViewController: UIViewController, ARSCNViewDelegate {
             print("Couldn't decode geometry")
             return nil
         }
-        
-        print(indices!.count)
-        print(indices!)
-        print(vertices!.count)
+    
         
         let transVert = vertices!.map{SCNVector3Make($0.x * scale, $0.y * scale, $0.z * scale)}
         
-        let returnSlice = slice(vertices: transVert, transform: node.simdTransform, plane: self.planeEquation, indices: indices!)
+        let returnSlice = slice(vertices: transVert, transform: node.simdTransform, plane: self.planeEquation, indices: indices!, normals: normals!)
         
         let slicedVertices = returnSlice.0
         let slicedIndices = returnSlice.1
+        let slicedNormals = returnSlice.2
         
-        print(slicedIndices)
+        
+        // Code below is to make an SCNNode of the sliced object
+        
+        let slicedSource = SCNGeometrySource(vertices: slicedVertices)
+        let slicedElements = SCNGeometryElement(indices: slicedIndices, primitiveType: (node.geometry?.elements.first?.primitiveType)!)
+        let slicedNormalsSource = SCNGeometrySource(normals: slicedNormals)
+        
+        // Right now this doesn't use the normalSource. Add slicedNormalSource to the sources array to use it
+        let slicedGeometry = SCNGeometry(sources: [slicedSource], elements:[slicedElements])
+        
+    
+
+        // Code below is to make an SCNNode of the original object
         
         // make scn node from decomposed source and elements
-        let source = SCNGeometrySource(vertices: slicedVertices)
-        let element = SCNGeometryElement(indices: slicedIndices, primitiveType: (node.geometry?.elements.first?.primitiveType)!)
-        
-        normals = decodeNormal(node: SCNNode(geometry: SCNGeometry(sources: [source], elements: [element])))
+        let source = SCNGeometrySource(vertices: transVert)
         let normalSource = SCNGeometrySource(normals: normals!)
 //        [indices![0], indices![1], indices![2]]
-        
+        let element = SCNGeometryElement(indices: indices!, primitiveType: (node.geometry?.elements.first?.primitiveType)!)
 
         let geometry = SCNGeometry(sources: [source, normalSource], elements: [element])
         
                 
-        return SCNNode(geometry: geometry)
+        // To show the original object: return SCNNode(geometry: geometry)
+        // To show the sliced object: return SCNNode(geometry: geometry)
+        
+        return SCNNode(geometry: slicedGeometry)
         
         // sceneView.scene.rootNode.addChildNode(self.decodeTube)
 
@@ -304,10 +314,10 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         return appendTo
     }
     
-    func slice(vertices: [SCNVector3], transform: simd_float4x4, plane: simd_float4, indices: [UInt32]) -> ([SCNVector3], [UInt32]) {
+    func slice(vertices: [SCNVector3], transform: simd_float4x4, plane: simd_float4, indices: [UInt32], normals: [SCNVector3]) -> ([SCNVector3], [UInt32], [SCNVector3]) {
        
-        print(vertices)
-        // Part 1
+        // Part 1: Array of Triangles is an array of array of three vertices that form a triangle.
+        // It converts triplets of indices to triplets of vertices
         
         var arrayOfTriangles = [[SCNVector3]]()
         for i in stride(from: 0, to: indices.count, by: 3){
@@ -318,12 +328,16 @@ class ViewController: UIViewController, ARSCNViewDelegate {
             arrayOfTriangles.append(triangle)
         }
         
-        print(arrayOfTriangles)
+
         
-        // Part 2
+        // Part 2: choosing which vertices are chosen for slicing and keeping track of the deleted ones
+        // Big assumption: the order of indices of normals correspond to the order of indices of vertices
+        // Adds the normals when the vertices are added
         
         var newVertices = [SCNVector3]()
+        var newNormals = [SCNVector3]()
         var deletedVertices = [SCNVector3]()
+        var counter = 0
         for vertex in vertices {
             let tempVec = simd_float4(x: vertex.x, y: vertex.y, z: vertex.z, w: 1)
             var worldVec = transform * tempVec
@@ -332,31 +346,38 @@ class ViewController: UIViewController, ARSCNViewDelegate {
             let distance = simd_dot(worldVec, plane)
             
             if distance < 0 {
-                plotRedSphere(radius: 0.025, worldPos: SCNVector3Make(worldVec.x, worldVec.y, worldVec.z))
-                newVertices.append(vertex)
-//                print(worldVec)
-//                print(plane)
-//                print(distance)
+                // plotRedSphere(radius: 0.025, worldPos: SCNVector3Make(worldVec.x, worldVec.y, worldVec.z))
+                
+                // The code below makes sure that vertices are only added if they are not already in the
+                // array. Having no repeats is important for part 4 to work.
+                
+                var addVertex = true
+                for vertexCheck in newVertices {
+                    if vertexCheck.x == vertex.x && vertexCheck.y == vertex.y && vertexCheck.z == vertex.z {
+                        addVertex = false
+                        break
+                    }
+                }
+                if addVertex {
+                    newVertices.append(vertex)
+                    newNormals.append(normals[counter])
+                }
+
             }
             else {
                 deletedVertices.append(vertex)
             }
+            counter += 1
         }
         
         
-//        newVertices = [SCNVector3.init(x: 0, y: 0, z: 0), SCNVector3.init(x: 1, y: 1, z: 1), SCNVector3.init(x: 2, y: 2, z: 2), SCNVector3.init(x: 3, y: 3, z: 3), SCNVector3.init(x: 4, y: 4, z: 4), SCNVector3.init(x: 5, y: 5, z: 5)]
-//
-//        deletedVertices = [SCNVector3.init(x: 6, y: 6, z: 6), SCNVector3.init(x: 7, y: 7, z: 7), SCNVector3.init(x: 8, y: 8, z: 8), SCNVector3.init(x: 9, y: 9, z: 9)]
-//
-//
-//        arrayOfTriangles = [[SCNVector3.init(x: 3, y: 3, z: 3), SCNVector3.init(x: 1, y: 1, z: 1), SCNVector3.init(x: 5, y: 5, z: 5)], [SCNVector3.init(x: 6, y: 6, z: 6), SCNVector3.init(x: 4, y: 4, z: 4), SCNVector3.init(x: 5, y: 5, z: 5)],
-//        [SCNVector3.init(x: 7, y: 7, z: 7), SCNVector3.init(x: 8, y: 8, z: 8), SCNVector3.init(x: 1, y: 1, z: 1)],
-//        [SCNVector3.init(x: 7, y: 7, z: 7), SCNVector3.init(x: 8, y: 8, z: 8), SCNVector3.init(x: 9, y: 9, z: 9)]]
-        
-        // Part 3
+        // Part 3: Removes any triangles which contain a deleted vertex from part 2 as any of its vertices
         
         for i in stride(from: arrayOfTriangles.count - 1, to: 0, by: -1) {
             let arrayAtIndex = arrayOfTriangles[i]
+            
+            // To do: Replace the bool part with a break statement to break out of the deletedVertex for loop
+            
             var bool = true
             for deletedVertex in deletedVertices {
                 if bool {
@@ -369,8 +390,10 @@ class ViewController: UIViewController, ARSCNViewDelegate {
                 }
             }
         }
+
         
-        // Part 4
+        // Part 4: Creates an array of indices based off of the array of triangles.
+        // Converts from triplets of vertices to triplets of indices, but they're not array in arrays
         
         var newIndices = [UInt32]()
         for triangle in arrayOfTriangles {
@@ -386,7 +409,7 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         }
         
         
-        return (newVertices, newIndices)
+        return (newVertices, newIndices, newNormals)
     }
     
     func obj2SCNNode(name: String) -> SCNNode? {
