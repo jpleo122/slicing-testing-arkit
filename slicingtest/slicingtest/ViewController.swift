@@ -145,6 +145,8 @@ class ViewController: UIViewController, ARSCNViewDelegate {
             let transform = simd_mul(currentFrame.camera.transform, translation)
             self.tubeNode.worldPosition = SCNVector3Make(transform.columns.3.x, transform.columns.3.y, transform.columns.3.z)
             
+            addShaders(node: self.tubeNode)
+            
             sceneView.scene.rootNode.addChildNode(self.tubeNode)
         }
     }
@@ -169,7 +171,7 @@ class ViewController: UIViewController, ARSCNViewDelegate {
             let normal = (planeNode.simdOrientation * simd_quatf(real: 0, imag: initNormal)) * planeNode.simdOrientation.inverse
             planeEquation = simd_float4(normal.imag, simd_dot(normal.imag, planeNode.simdPosition))
             
-            self.planeNode.opacity = 0
+//            self.planeNode.opacity = 0
             
             sceneView.scene.rootNode.addChildNode(self.planeNode)
         }
@@ -189,6 +191,43 @@ class ViewController: UIViewController, ARSCNViewDelegate {
 
             sceneView.scene.rootNode.addChildNode(self.heartNode)
         }
+    }
+    
+    func addShaders(node: SCNNode) {
+        let planeEquationValue = NSValue(scnVector4: SCNVector4Make(planeEquation.x, planeEquation.y, planeEquation.z, planeEquation.w))
+        node.geometry?.setValue(planeEquationValue, forKey: "plane_equation")
+        
+        // add geometry shader code
+        let geometryModiferString = """
+        varying float clipFragment; \
+        #pragma body \
+        uniform vec4 plane_equation; \
+        float distance = dot(_geometry.position.xyz, plane_equation.xyz) + plane_equation.w; \"
+        if (distance <= 0.0) { \
+            clipFragment = 1.0; \
+        } else { \
+            clipFragment = 0.0; \
+        }
+        """
+        
+        
+        
+//        // add fragment shader code
+//        let fragmentModifierString = """
+//        varying float clipFragment; \
+//        #pragma transparent \
+//        #pragma body \
+//        if (clipFragment > 0.0) { \
+//            discard_fragment(); \
+//        }
+//        """
+        
+        // add shaders to node geometry
+        node.geometry?.shaderModifiers = [
+            SCNShaderModifierEntryPoint.geometry: geometryModiferString,
+//            SCNShaderModifierEntryPoint.fragment: fragmentModifierString
+        ]
+        
     }
     
     func obj2SCNNode(name: String) -> SCNNode? {
@@ -228,8 +267,8 @@ class ViewController: UIViewController, ARSCNViewDelegate {
     // MARK: - Button Actions
     
     @objc func add(_sender: Any) {
-        placeHeart()
         placePlane()
+        placeTube()
         
         //create a light node
         sceneView.scene.rootNode.addChildNode(self.createLightNode()!)
