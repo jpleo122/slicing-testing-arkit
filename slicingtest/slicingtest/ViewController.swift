@@ -111,8 +111,13 @@ class ViewController: UIViewController, ARSCNViewDelegate {
                 currentAngleY = newAngleY
             }
 //             update plane equation
-//            let normal = (planeNode.simdOrientation * simd_quatf(real: 0, imag: initNormal)) * planeNode.simdOrientation.inverse
+            let normal = (planeNode.simdOrientation * simd_quatf(real: 0, imag: initNormal)) * planeNode.simdOrientation.inverse
 //            planeEquation = simd_float4(normal.imag, simd_dot(normal.imag, planeNode.simdPosition))
+            planeEquation = simd_float4(normal.imag, 0)
+            
+            let planeEquationValue = NSValue(scnVector4: SCNVector4Make(planeEquation.x, planeEquation.y, planeEquation.z, planeEquation.w))
+            self.heartNode.geometry?.setValue(planeEquationValue, forKey: "plane_equation")
+            
 //            print(planeEquation)
         }
     }
@@ -169,7 +174,8 @@ class ViewController: UIViewController, ARSCNViewDelegate {
             
             // define plane equation initially
             let normal = (planeNode.simdOrientation * simd_quatf(real: 0, imag: initNormal)) * planeNode.simdOrientation.inverse
-            planeEquation = simd_float4(normal.imag, simd_dot(normal.imag, planeNode.simdPosition))
+//            planeEquation = simd_float4(normal.imag, simd_dot(normal.imag, planeNode.simdPosition))
+            planeEquation = simd_float4(normal.imag, 0)
             
 //            self.planeNode.opacity = 0
             
@@ -178,7 +184,7 @@ class ViewController: UIViewController, ARSCNViewDelegate {
     }
     
     func placeHeart() {
-        self.heartNode = obj2SCNNode(name: "dTGA_reduced_5%")!
+        self.heartNode = obj2SCNNode(name: "dTGA_snapped")!
 
         if let currentFrame = sceneView.session.currentFrame {
             //Add node set distance in front of camera
@@ -188,6 +194,8 @@ class ViewController: UIViewController, ARSCNViewDelegate {
             translation.columns.3.z = -0.5
             let transform = simd_mul(currentFrame.camera.transform, translation)
             heartNode?.worldPosition = SCNVector3Make(transform.columns.3.x, transform.columns.3.y, transform.columns.3.z)
+            
+            addShaders(node: self.heartNode)
 
             sceneView.scene.rootNode.addChildNode(self.heartNode)
         }
@@ -196,21 +204,148 @@ class ViewController: UIViewController, ARSCNViewDelegate {
     func addShaders(node: SCNNode) {
         let planeEquationValue = NSValue(scnVector4: SCNVector4Make(planeEquation.x, planeEquation.y, planeEquation.z, planeEquation.w))
         node.geometry?.setValue(planeEquationValue, forKey: "plane_equation")
+        // add geometry shader code
+//        let geometryModiferString = """
+//        #pragma arguments \
+//        varying float clipFragment; \
+//        #pragma body \
+//        uniform vec4 plane_equation; \
+//        float distance = dot(_geometry.position.xyz, plane_equation.xyz) + plane_equation.w; \"
+//        if (distance <= 0.0) { \
+//            clipFragment = 1.0; \
+//        } else { \
+//            clipFragment = 0.0; \
+//        }
+//        """
         
         // add geometry shader code
-        let geometryModiferString = """
-        varying float clipFragment; \
-        #pragma body \
-        uniform vec4 plane_equation; \
-        float distance = dot(_geometry.position.xyz, plane_equation.xyz) + plane_equation.w; \"
-        if (distance <= 0.0) { \
-            clipFragment = 1.0; \
-        } else { \
-            clipFragment = 0.0; \
+//        let geometryModiferString = """
+//        #pragma arguments \
+//        varying float clipFragment; \
+//        #pragma body \
+//        uniform vec4 plane_equation; \
+//        float distance = dot(_geometry.position.xyz, plane_equation.xyz) + plane_equation.w; \
+//        if (distance <= 0.0) { \
+//            clipFragment = 1.0; \
+//        } else { \
+//            clipFragment = 0.0; \
+//        }
+//        """
+        
+//        let sunShader = """
+//        uniform vec4 plane_equation; \
+//
+//        float theta1 = atan2(_geometry.position.x, _geometry.position.y); \
+//        float theta2 = atan2(_geometry.position.x, _geometry.position.z); \
+//        float pi = 3.14159; \
+//
+//        float distance = dot(_geometry.position.xyz, plane_equation.xyz) + plane_equation.w; \
+//
+//        if (distance > 0.0) { \
+//            _geometry.position.xyz += _geometry.position.xyz * 0.2 \
+//                * sin(theta1 * pi - u_time * 2) * sin(6.0 * theta1) \
+//                * cos(7.0 * theta2); \
+//        }
+//        """
+//        print(self.planeEquation)
+        
+//        let sunShader = """
+//        #include <metal_stdlib> \
+//
+//        #pragma varyings \
+//        float clipFragment \
+//
+//        #pragma arguments \
+//        vec4 plane_equation; \
+//
+//        #pragma body \
+//
+//        float distance = dot(_geometry.position.xyz, plane_equation.xyz) + plane_equation.w;
+//
+//        if (distance > 0.0) { \
+//            out.clipFragment = 1.0 \
+//        } else { \
+//            out.clipFragment = 0.0 \
+//        }
+//        """
+        
+        let sunShader = """
+        #include <metal_stdlib>
+
+        #pragma arguments
+        float4 plane_equation;
+
+        #pragma varyings
+        float clipFragment;
+
+        #pragma body
+        float distance = dot(_geometry.position.xyz, plane_equation.xyz) + plane_equation.w;
+
+        if (distance > 0.0) {
+            out.clipFragment = 1.0;
+        } else {
+            out.clipFragment = 0.0;
         }
         """
         
+        let fragment = """
+        #include <metal_stdlib>
+
+        #pragma varyings
+        float clipFragment;
+
+        #pragma body
+        if (in.clipFragment > 0.0) {
+            discard_fragment();
+        }
+        """
         
+//        let surface = """
+//        #include <metal_stdlib>
+//
+//        #pragma varyings
+//        float clipFragment;
+//
+//        #pragma body
+//        _surface.diffuse = float4(_surface.diffuse.rgb * in.clipFragment, in.clipFragment);
+//        """
+        
+//        let surface = """
+//        uniform vec4 plane_equation;
+//
+//        float a = 0.5;
+//
+//        float distance = dot(_surface.position.xyz, plane_equation.xyz) + plane_equation.w;
+//
+//        if (distance > 0.0) {
+//            _surface.diffuse = vec4(_surface.diffuse.rgb * a, a);
+//        }
+//        """
+        
+//        let fragment = """
+//        #include <metal_stdlib> \
+//
+//        #pragma body \
+//        if (in.clipFragment > 0.0) { \
+//            discard_fragment(); \
+//        }
+//        """
+        
+//        let sunSurface = """
+//        #pragma transparent \
+//        #pragma body \
+//
+//        float dotProductEdge = 0.5; \
+//
+//        float dotProduct = dot(_surface.view, _surface.normal); \
+//        dotProduct = dotProduct < 0.0 ? 0.0 : dotProduct; \
+//
+//        _surface.diffuse.rgb = vec3(1.0, 1.0, 0.0); \
+//
+//        if (dotProduct <= dotProductEdge) { \
+//            float a = dotProduct / dotProductEdge; \
+//            _surface.diffuse = vec4(_surface.diffuse.rgb * a, a); \
+//        }
         
 //        // add fragment shader code
 //        let fragmentModifierString = """
@@ -224,10 +359,10 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         
         // add shaders to node geometry
         node.geometry?.shaderModifiers = [
-            SCNShaderModifierEntryPoint.geometry: geometryModiferString,
-//            SCNShaderModifierEntryPoint.fragment: fragmentModifierString
+            SCNShaderModifierEntryPoint.geometry: sunShader,
+            SCNShaderModifierEntryPoint.fragment: fragment,
+//            SCNShaderModifierEntryPoint.surface: surface,
         ]
-        
     }
     
     func obj2SCNNode(name: String) -> SCNNode? {
@@ -247,8 +382,9 @@ class ViewController: UIViewController, ARSCNViewDelegate {
             //change SCNNode transform so that center of SCNNode is center of it's SCNGeometry
 
             let (center, radius) = temp_node.boundingSphere
+            print(center)
 
-            temp_node.pivot = SCNMatrix4MakeTranslation(center.x, center.y, center.z)
+//            temp_node.pivot = SCNMatrix4MakeTranslation(center.x, center.y, center.z)
 
             //scale SCNNode so that it is a reasonable size to the viewer
             //0.25 was choosen as object is set 0.5 units away from user
@@ -268,7 +404,8 @@ class ViewController: UIViewController, ARSCNViewDelegate {
     
     @objc func add(_sender: Any) {
         placePlane()
-        placeTube()
+//        placeTube()
+        placeHeart()
         
         //create a light node
         sceneView.scene.rootNode.addChildNode(self.createLightNode()!)
