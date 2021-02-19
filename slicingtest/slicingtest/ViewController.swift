@@ -22,7 +22,8 @@ class ViewController: UIViewController, ARSCNViewDelegate {
     // gestures
     var currentAngleY: Float = 0.0
     var currentAngleX: Float = 0.0
-    var initNormal: simd_float3 = simd_float3(x: 0, y: 0, z: -1)
+    var planeNormal: simd_float3 = simd_float3(x: 0, y: 0, z: -1)
+    let initNormal: simd_float3 = simd_float3(x: 0, y: 0, z: -1)
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -48,8 +49,8 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         // add panning gesture to rotate heartnode
         let panRotateRecognizer = UIPanGestureRecognizer(target: self, action: #selector(panGesture(sender:)))
         sceneView.addGestureRecognizer(panRotateRecognizer)
-//
-//        //add pinch gesture for enlarging object
+
+        //add pinch gesture for moving plane along normal
 //        let pinchRecognizer = UIPinchGestureRecognizer(target: self, action: #selector(pinchGesture(sender:)))
 //        sceneView.addGestureRecognizer(pinchRecognizer)
     }
@@ -91,6 +92,22 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         sceneView.scene.rootNode.addChildNode(sphereNode)
     }
     
+    
+    func updatePlaneEquation() {
+        // update normal
+        let normal = (self.planeNode.simdOrientation * simd_quatf(real: 0, imag: self.initNormal)) * self.planeNode.simdOrientation.inverse
+        
+        self.planeNormal = normal.imag
+//        print(normal.imag)
+        self.planeEquation = simd_float4(self.planeNormal, simd_dot(self.planeNormal, self.planeNode.simdWorldPosition - self.heartNode.simdWorldPosition))
+//        self.planeEquation = simd_float4(normal.imag, 0)
+        
+        print(self.planeEquation)
+        
+        let planeEquationValue = NSValue(scnVector4: SCNVector4Make(self.planeEquation.x, self.planeEquation.y, self.planeEquation.z, self.planeEquation.w))
+        self.heartNode.geometry?.setValue(planeEquationValue, forKey: "plane_equation")
+    }
+    
     @objc func panGesture(sender: UIPanGestureRecognizer) {
         if planeNode != nil {
             self.planeNode.opacity = 1
@@ -110,29 +127,34 @@ class ViewController: UIViewController, ARSCNViewDelegate {
                 currentAngleX = newAngleX
                 currentAngleY = newAngleY
             }
-//             update plane equation
-            let normal = (planeNode.simdOrientation * simd_quatf(real: 0, imag: initNormal)) * planeNode.simdOrientation.inverse
+//            // update plane equation
+//            let normal = (planeNode.simdOrientation * simd_quatf(real: 0, imag: self.planeNormal)) * planeNode.simdOrientation.inverse
+//            print(normal.imag)
 //            planeEquation = simd_float4(normal.imag, simd_dot(normal.imag, planeNode.simdPosition))
-            planeEquation = simd_float4(normal.imag, 0)
-            
-            let planeEquationValue = NSValue(scnVector4: SCNVector4Make(planeEquation.x, planeEquation.y, planeEquation.z, planeEquation.w))
-            self.heartNode.geometry?.setValue(planeEquationValue, forKey: "plane_equation")
-            
-//            print(planeEquation)
+//            planeEquation = simd_float4(normal.imag, 0)
+//
+//            let planeEquationValue = NSValue(scnVector4: SCNVector4Make(planeEquation.x, planeEquation.y, planeEquation.z, planeEquation.w))
+//            self.heartNode.geometry?.setValue(planeEquationValue, forKey: "plane_equation")
+            self.updatePlaneEquation()
         }
     }
     
-//    @objc func pinchGesture(sender: UIPinchGestureRecognizer) {
-//        if decodeTube != nil && sender.state == .changed {
-////            print("scale", sender.scale)
-////            print("velocity", sender.velocity)
-//            let pinchScaleX = Float(sender.scale) * decodeTube!.scale.x
-//            let pinchScaleY =  Float(sender.scale) * decodeTube!.scale.y
-//            let pinchScaleZ =  Float(sender.scale) * decodeTube!.scale.z
-//            decodeTube!.scale = SCNVector3(pinchScaleX, pinchScaleY, pinchScaleZ)
-//            sender.scale = 1
-//        }
-//    }
+    @objc func pinchGesture(sender: UIPinchGestureRecognizer) {
+        if self.planeNode != nil && sender.state == .changed {
+            print("scale", sender.scale)
+            print("velocity", sender.velocity)
+            let pinchScaleX = Float(sender.scale - 1) * self.planeNormal.x
+            let pinchScaleY =  Float(sender.scale - 1) * self.planeNormal.y
+            let pinchScaleZ =  Float(sender.scale - 1) * self.planeNormal.z
+//            let tempVec = self.planeNode.simdPosition =
+            
+            self.planeNode.simdWorldPosition += simd_float3(pinchScaleX, pinchScaleY, pinchScaleZ)
+//            self.planeNode!.scale = SCNVector3(pinchScaleX, pinchScaleY, pinchScaleZ)
+            sender.scale = 1
+            
+            self.updatePlaneEquation()
+        }
+    }
     
     func placeTube() {
         if let currentFrame = sceneView.session.currentFrame {
@@ -172,10 +194,12 @@ class ViewController: UIViewController, ARSCNViewDelegate {
             self.planeNode.worldPosition = SCNVector3Make(transform.columns.3.x, transform.columns.3.y, transform.columns.3.z)
 //            self.planeNode.worldPosition = SCNVector3Make(translation.columns.3.x, translation.columns.3.y, translation.columns.3.z)
             
-            // define plane equation initially
-            let normal = (planeNode.simdOrientation * simd_quatf(real: 0, imag: initNormal)) * planeNode.simdOrientation.inverse
-//            planeEquation = simd_float4(normal.imag, simd_dot(normal.imag, planeNode.simdPosition))
-            planeEquation = simd_float4(normal.imag, 0)
+//            // define plane equation initially
+//            let normal = (planeNode.simdOrientation * simd_quatf(real: 0, imag: self.planeNormal)) * planeNode.simdOrientation.inverse
+//            print(normal.imag)
+//            // planeEquation = simd_float4(normal.imag, simd_dot(normal.imag, planeNode.simdPosition))
+//            planeEquation = simd_float4(normal.imag, 0)
+//            self.updatePlaneEquation()
             
 //            self.planeNode.opacity = 0
             
@@ -194,6 +218,8 @@ class ViewController: UIViewController, ARSCNViewDelegate {
             translation.columns.3.z = -0.5
             let transform = simd_mul(currentFrame.camera.transform, translation)
             heartNode?.worldPosition = SCNVector3Make(transform.columns.3.x, transform.columns.3.y, transform.columns.3.z)
+            
+            self.updatePlaneEquation()
             
             addShaders(node: self.heartNode)
 
