@@ -215,14 +215,14 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         
         // Create voxel grid from MDLAsset
 //        let grid = MDLVoxelArray(asset: asset, divisions: 25, interiorShells: 0, exteriorShells: 0, patchRadius: 0.0)
-        let grid = MDLVoxelArray(asset: asset, divisions: 100, patchRadius: 0.0)
-//        grid.shellFieldInteriorThickness = 5
+        let grid = MDLVoxelArray(asset: asset, divisions: 300, patchRadius: 0.0)
+//        grid.shellFieldExteriorThickness = 0.01
 //        let grid = MDLVoxelArray
+        var start = DispatchTime.now() // <<<<<<<<<< Start time
         if let voxelData = grid.voxelIndices() {   // retrieve voxel data
             // Create voxel parent node and add to scene
             _voxels?.removeFromParentNode()
             _voxels = SCNNode()
-            self.sceneView.scene.rootNode.addChildNode(_voxels!)
             
             // Create the voxel node geometry
             let particle = SCNBox(width: 2.0 * SCALE_FACTOR, height: 2.0 * SCALE_FACTOR, length: 2.0 * SCALE_FACTOR, chamferRadius: 0.0)
@@ -251,6 +251,15 @@ class ViewController: UIViewController, ARSCNViewDelegate {
 //            let bpp = image.bitsPerPixel / 8
             
             // Traverse the NSData voxel array and for each ijk index, create a voxel node positioned at its spatial location
+            var end = DispatchTime.now()
+            var nanoTime = end.uptimeNanoseconds - start.uptimeNanoseconds // <<<<< Difference in nano seconds (UInt64)
+            var timeInterval = Double(nanoTime) / 1_000_000_000 // Technically could overflow for long running tests
+            print("\(timeInterval) seconds")
+            
+            let material = SCNMaterial()
+            material.diffuse.contents = UIColor.darkGray
+            
+            var start = DispatchTime.now()
             voxelData.withUnsafeBytes {voxelBytes in
                 let voxels = voxelBytes.bindMemory(to: MDLVoxelIndex.self).baseAddress!
                 let count = voxelData.count / MemoryLayout<MDLVoxelIndex>.size
@@ -289,15 +298,22 @@ class ViewController: UIViewController, ARSCNViewDelegate {
                     // Create the voxel node and set its properties
                     let voxelNode = SCNNode(geometry: (particle.copy() as! SCNGeometry))
                     voxelNode.position = SCNVector3Make(Float(CGFloat(position.x) + rnd()), Float(CGFloat(position.y)), Float(CGFloat(position.z) + rnd()))
-                    let material = SCNMaterial()
-                    material.diffuse.contents = color
+//                    let material = SCNMaterial()
+//                    material.diffuse.contents = color
 //                    material.selfIllumination.contents = "character.scnassets/textures/max_ambiant.png"
                     voxelNode.geometry!.firstMaterial = material
                     
                     // Add voxel node to the scene
                     _voxels!.addChildNode(voxelNode)
                 }
+                
+                // assign voxel node to parent
+                self.sceneView.scene.rootNode.addChildNode(_voxels!.flattenedClone())
             }
+            end = DispatchTime.now()
+            nanoTime = end.uptimeNanoseconds - start.uptimeNanoseconds // <<<<< Difference in nano seconds (UInt64)
+            timeInterval = Double(nanoTime) / 1_000_000_000 // Technically could overflow for long running tests
+            print("\(timeInterval) seconds")
             _explodeUsingCubes = true
         }
     }
