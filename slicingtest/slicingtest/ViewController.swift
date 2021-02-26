@@ -24,6 +24,7 @@ class ViewController: UIViewController, ARSCNViewDelegate {
     var currentAngleX: Float = 0.0
     var planeNormal: simd_float3 = simd_float3(x: 0, y: 0, z: -1)
     let initNormal: simd_float3 = simd_float3(x: 0, y: 0, z: -1)
+    let pinchConstant: Float = 5
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -51,8 +52,8 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         sceneView.addGestureRecognizer(panRotateRecognizer)
 
         //add pinch gesture for moving plane along normal
-//        let pinchRecognizer = UIPinchGestureRecognizer(target: self, action: #selector(pinchGesture(sender:)))
-//        sceneView.addGestureRecognizer(pinchRecognizer)
+        let pinchRecognizer = UIPinchGestureRecognizer(target: self, action: #selector(pinchGesture(sender:)))
+        sceneView.addGestureRecognizer(pinchRecognizer)
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -100,9 +101,11 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         self.planeNormal = normal.imag
 //        print(normal.imag)
         self.planeEquation = simd_float4(self.planeNormal, simd_dot(self.planeNormal, self.planeNode.simdWorldPosition - self.heartNode.simdWorldPosition))
+//        print(self.heartNode.convertPosition(SCNVector3Make(0, 0, 0), to: self.planeNode))
+//        print(self.planeNode.simdWorldPosition - self.heartNode.simdWorldPosition)
 //        self.planeEquation = simd_float4(normal.imag, 0)
         
-        print(self.planeEquation)
+//        print(self.planeEquation)
         
         let planeEquationValue = NSValue(scnVector4: SCNVector4Make(self.planeEquation.x, self.planeEquation.y, self.planeEquation.z, self.planeEquation.w))
         self.heartNode.geometry?.setValue(planeEquationValue, forKey: "plane_equation")
@@ -110,8 +113,6 @@ class ViewController: UIViewController, ARSCNViewDelegate {
     
     @objc func panGesture(sender: UIPanGestureRecognizer) {
         if planeNode != nil {
-            self.planeNode.opacity = 1
-            
             
             let translation = sender.translation(in: sender.view!)
 
@@ -141,11 +142,11 @@ class ViewController: UIViewController, ARSCNViewDelegate {
     
     @objc func pinchGesture(sender: UIPinchGestureRecognizer) {
         if self.planeNode != nil && sender.state == .changed {
-            print("scale", sender.scale)
-            print("velocity", sender.velocity)
-            let pinchScaleX = Float(sender.scale - 1) * self.planeNormal.x
-            let pinchScaleY =  Float(sender.scale - 1) * self.planeNormal.y
-            let pinchScaleZ =  Float(sender.scale - 1) * self.planeNormal.z
+//            print("scale", sender.scale)
+//            print("velocity", sender.velocity)
+            let pinchScaleX = Float(sender.scale - 1) * self.planeNormal.x * self.pinchConstant
+            let pinchScaleY =  Float(sender.scale - 1) * self.planeNormal.y * self.pinchConstant
+            let pinchScaleZ =  Float(sender.scale - 1) * self.planeNormal.z * self.pinchConstant
 //            let tempVec = self.planeNode.simdPosition =
             
             self.planeNode.simdWorldPosition += simd_float3(pinchScaleX, pinchScaleY, pinchScaleZ)
@@ -201,7 +202,7 @@ class ViewController: UIViewController, ARSCNViewDelegate {
 //            planeEquation = simd_float4(normal.imag, 0)
 //            self.updatePlaneEquation()
             
-//            self.planeNode.opacity = 0
+            self.planeNode.opacity = 0
             
             sceneView.scene.rootNode.addChildNode(self.planeNode)
         }
@@ -230,72 +231,9 @@ class ViewController: UIViewController, ARSCNViewDelegate {
     func addShaders(node: SCNNode) {
         let planeEquationValue = NSValue(scnVector4: SCNVector4Make(planeEquation.x, planeEquation.y, planeEquation.z, planeEquation.w))
         node.geometry?.setValue(planeEquationValue, forKey: "plane_equation")
-        // add geometry shader code
-//        let geometryModiferString = """
-//        #pragma arguments \
-//        varying float clipFragment; \
-//        #pragma body \
-//        uniform vec4 plane_equation; \
-//        float distance = dot(_geometry.position.xyz, plane_equation.xyz) + plane_equation.w; \"
-//        if (distance <= 0.0) { \
-//            clipFragment = 1.0; \
-//        } else { \
-//            clipFragment = 0.0; \
-//        }
-//        """
         
         // add geometry shader code
-//        let geometryModiferString = """
-//        #pragma arguments \
-//        varying float clipFragment; \
-//        #pragma body \
-//        uniform vec4 plane_equation; \
-//        float distance = dot(_geometry.position.xyz, plane_equation.xyz) + plane_equation.w; \
-//        if (distance <= 0.0) { \
-//            clipFragment = 1.0; \
-//        } else { \
-//            clipFragment = 0.0; \
-//        }
-//        """
-        
-//        let sunShader = """
-//        uniform vec4 plane_equation; \
-//
-//        float theta1 = atan2(_geometry.position.x, _geometry.position.y); \
-//        float theta2 = atan2(_geometry.position.x, _geometry.position.z); \
-//        float pi = 3.14159; \
-//
-//        float distance = dot(_geometry.position.xyz, plane_equation.xyz) + plane_equation.w; \
-//
-//        if (distance > 0.0) { \
-//            _geometry.position.xyz += _geometry.position.xyz * 0.2 \
-//                * sin(theta1 * pi - u_time * 2) * sin(6.0 * theta1) \
-//                * cos(7.0 * theta2); \
-//        }
-//        """
-//        print(self.planeEquation)
-        
-//        let sunShader = """
-//        #include <metal_stdlib> \
-//
-//        #pragma varyings \
-//        float clipFragment \
-//
-//        #pragma arguments \
-//        vec4 plane_equation; \
-//
-//        #pragma body \
-//
-//        float distance = dot(_geometry.position.xyz, plane_equation.xyz) + plane_equation.w;
-//
-//        if (distance > 0.0) { \
-//            out.clipFragment = 1.0 \
-//        } else { \
-//            out.clipFragment = 0.0 \
-//        }
-//        """
-        
-        let sunShader = """
+        let geometryShader = """
         #include <metal_stdlib>
 
         #pragma arguments
@@ -314,7 +252,7 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         }
         """
         
-        let fragment = """
+        let fragmentShader = """
         #include <metal_stdlib>
 
         #pragma varyings
@@ -326,68 +264,10 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         }
         """
         
-//        let surface = """
-//        #include <metal_stdlib>
-//
-//        #pragma varyings
-//        float clipFragment;
-//
-//        #pragma body
-//        _surface.diffuse = float4(_surface.diffuse.rgb * in.clipFragment, in.clipFragment);
-//        """
-        
-//        let surface = """
-//        uniform vec4 plane_equation;
-//
-//        float a = 0.5;
-//
-//        float distance = dot(_surface.position.xyz, plane_equation.xyz) + plane_equation.w;
-//
-//        if (distance > 0.0) {
-//            _surface.diffuse = vec4(_surface.diffuse.rgb * a, a);
-//        }
-//        """
-        
-//        let fragment = """
-//        #include <metal_stdlib> \
-//
-//        #pragma body \
-//        if (in.clipFragment > 0.0) { \
-//            discard_fragment(); \
-//        }
-//        """
-        
-//        let sunSurface = """
-//        #pragma transparent \
-//        #pragma body \
-//
-//        float dotProductEdge = 0.5; \
-//
-//        float dotProduct = dot(_surface.view, _surface.normal); \
-//        dotProduct = dotProduct < 0.0 ? 0.0 : dotProduct; \
-//
-//        _surface.diffuse.rgb = vec3(1.0, 1.0, 0.0); \
-//
-//        if (dotProduct <= dotProductEdge) { \
-//            float a = dotProduct / dotProductEdge; \
-//            _surface.diffuse = vec4(_surface.diffuse.rgb * a, a); \
-//        }
-        
-//        // add fragment shader code
-//        let fragmentModifierString = """
-//        varying float clipFragment; \
-//        #pragma transparent \
-//        #pragma body \
-//        if (clipFragment > 0.0) { \
-//            discard_fragment(); \
-//        }
-//        """
-        
         // add shaders to node geometry
         node.geometry?.shaderModifiers = [
-            SCNShaderModifierEntryPoint.geometry: sunShader,
-            SCNShaderModifierEntryPoint.fragment: fragment,
-//            SCNShaderModifierEntryPoint.surface: surface,
+            SCNShaderModifierEntryPoint.geometry: geometryShader,
+            SCNShaderModifierEntryPoint.fragment: fragmentShader,
         ]
     }
     
