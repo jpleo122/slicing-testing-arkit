@@ -19,6 +19,7 @@ class ViewController: UIViewController, ARSCNViewDelegate {
     var decodeTube: SCNNode!
     var planeNode: SCNNode!
     var heartNode: SCNNode!
+    var testCube: SCNNode!
     var planeEquation: simd_float4!
     var _voxels: SCNNode?
     
@@ -57,6 +58,9 @@ class ViewController: UIViewController, ARSCNViewDelegate {
 //        //add pinch gesture for enlarging object
 //        let pinchRecognizer = UIPinchGestureRecognizer(target: self, action: #selector(pinchGesture(sender:)))
 //        sceneView.addGestureRecognizer(pinchRecognizer)
+        
+        // add light node
+//        sceneView.scene.rootNode.addChildNode(self.createLightNode()!)
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -159,6 +163,17 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         return nil
     }
     
+    func placeInFrontOfCamera(node: SCNNode) {
+        if let currentFrame = sceneView.session.currentFrame {
+            var translation = matrix_identity_float4x4
+            translation.columns.3.x = 0
+            translation.columns.3.y = 0
+            translation.columns.3.z = -0.5
+            let transform = simd_mul(currentFrame.camera.transform, translation)
+            node.worldPosition = SCNVector3Make(transform.columns.3.x, transform.columns.3.y, transform.columns.3.z)
+        }
+    }
+    
     func placePlane() {
         if let currentFrame = sceneView.session.currentFrame {
             let planeGeo = SCNPlane(width: 0.4, height: 0.4)
@@ -186,7 +201,7 @@ class ViewController: UIViewController, ARSCNViewDelegate {
     }
     
     func placeHeart() {
-        self.heartNode = obj2SCNNode(name: "dTGA_reduced_5%")!
+        self.heartNode = obj2SCNNode(name: "dTGA")!
 
         if let currentFrame = sceneView.session.currentFrame {
             //Add node set distance in front of camera
@@ -213,10 +228,14 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         tempScene.rootNode.addChildNode(node)
         let asset = MDLAsset(scnScene: tempScene)
         
+        let divs = 15
         // Create voxel grid from MDLAsset
 //        let grid = MDLVoxelArray(asset: asset, divisions: 25, interiorShells: 0, exteriorShells: 0, patchRadius: 0.0)
-        let grid = MDLVoxelArray(asset: asset, divisions: 300, patchRadius: 0.0)
-//        grid.shellFieldExteriorThickness = 0.01
+        let grid = MDLVoxelArray(asset: asset, divisions: Int32(divs), patchRadius: 0)
+        print(abs(asset.boundingBox.maxBounds.y - asset.boundingBox.minBounds.y) / Float(divs))
+        grid.shellFieldInteriorThickness = abs(asset.boundingBox.maxBounds.y - asset.boundingBox.minBounds.y) / Float(divs)
+//        print(asset.boundingBox.maxBounds)
+//        grid.shellFieldExteriorThickness = 0.2
 //        let grid = MDLVoxelArray
         var start = DispatchTime.now() // <<<<<<<<<< Start time
         if let voxelData = grid.voxelIndices() {   // retrieve voxel data
@@ -318,63 +337,49 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         }
     }
     
-    @IBAction func voxelizeMesh(node: SCNNode) {
+    func voxelizeMesh(node: SCNNode) -> (SCNNode, MDLVoxelArray) {
         // Create MDLAsset from scene
         let tempScene = SCNScene()
         tempScene.rootNode.addChildNode(node)
         let asset = MDLAsset(scnScene: tempScene)
-        
+                        
         // Create voxel grid from MDLAsset
-//        let grid = MDLVoxelArray(asset: asset, divisions: 25, interiorShells: 0, exteriorShells: 0, patchRadius: 0.0)
-        let grid = MDLVoxelArray(asset: asset, divisions: 25, patchRadius: 0.0)
-//        grid.shellFieldExteriorThickness = 0.01
-//        let grid = MDLVoxelArray
         var start = DispatchTime.now() // <<<<<<<<<< Start time
+        let grid = MDLVoxelArray(asset: asset, divisions: 75, patchRadius: 0.0)
+        let end = DispatchTime.now()
+        let nanoTime = end.uptimeNanoseconds - start.uptimeNanoseconds // <<<<< Difference in nano seconds (UInt64)
+        let timeInterval = Double(nanoTime) / 1_000_000_000 // Technically could overflow for long running tests
+        print("\(timeInterval) seconds")
+        
+        var tempNode = SCNNode()
+
         if let voxelMesh = grid.mesh(using: nil) {   // retrieve voxel data
             // Create voxel parent node and add to scene
-            _voxels?.removeFromParentNode()
-            
-            var end = DispatchTime.now()
-            var nanoTime = end.uptimeNanoseconds - start.uptimeNanoseconds // <<<<< Difference in nano seconds (UInt64)
-            var timeInterval = Double(nanoTime) / 1_000_000_000 // Technically could overflow for long running tests
-            print("\(timeInterval) seconds")
-            
-            start = DispatchTime.now()
             
             print(voxelMesh.boundingBox)
             
             let asset = MDLAsset()
             asset.add(voxelMesh)
             print(asset.object(at: 0).boundingBox(atTime: 5))
-            _voxels = SCNNode(mdlObject: asset.object(at: 0))
-            print(_voxels?.boundingSphere)
+            tempNode = SCNNode(mdlObject: asset.object(at: 0))
+//            print(_voxels?.boundingSphere)
             
-            let (center, radius) = _voxels!.boundingSphere
+            let (_, nodeRadius) = node.boundingSphere
             
-            let scale_change = 0.25 / radius
+            let (_, tempNodeRadius) = tempNode.boundingSphere
+            let scale_change = nodeRadius / tempNodeRadius
 
-            _voxels!.scale = SCNVector3(_voxels!.scale.x * scale_change,
-                                       _voxels!.scale.y * scale_change,
-                                       _voxels!.scale.z * scale_change)
+            tempNode.scale = SCNVector3(tempNode.scale.x * scale_change,
+                                        tempNode.scale.y * scale_change,
+                                        tempNode.scale.z * scale_change)
+        
+            tempNode.position = node.position
+            sceneView.scene.rootNode.addChildNode(tempNode)
             
-            if let currentFrame = sceneView.session.currentFrame {
-                //Add node set distance in front of camera
-                var translation = matrix_identity_float4x4
-                translation.columns.3.x = 0
-                translation.columns.3.y = 0
-                translation.columns.3.z = -0.5
-                let transform = simd_mul(currentFrame.camera.transform, translation)
-                _voxels?.worldPosition = SCNVector3Make(transform.columns.3.x, transform.columns.3.y, transform.columns.3.z)
-
-                sceneView.scene.rootNode.addChildNode(_voxels!)
-            }
-    
-            end = DispatchTime.now()
-            nanoTime = end.uptimeNanoseconds - start.uptimeNanoseconds // <<<<< Difference in nano seconds (UInt64)
-            timeInterval = Double(nanoTime) / 1_000_000_000 // Technically could overflow for long running tests
-            print("\(timeInterval) seconds")
-            
+            node.removeFromParentNode()
         }
+        
+        return (tempNode, grid)
     }
 
     func obj2SCNNode(name: String) -> SCNNode? {
@@ -411,13 +416,137 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         return nil
     }
     
+    func placeCube() -> SCNNode {
+        let cubeGeom = SCNBox(width: 0.3, height: 0.3, length: 0.3, chamferRadius: 0)
+        let node = SCNNode(geometry: cubeGeom)
+        
+        node.position = self.decodeTube.position
+        
+        node.position.x = node.position.x - 0.15
+
+//        if let currentFrame = sceneView.session.currentFrame {
+//            //Add node set distance in front of camera
+//            var translation = matrix_identity_float4x4
+//            translation.columns.3.x = 0.3
+//            translation.columns.3.y = 0
+//            translation.columns.3.z = -0.5
+//            let transform = simd_mul(currentFrame.camera.transform, translation)
+//            node.worldPosition = SCNVector3Make(transform.columns.3.x, transform.columns.3.y, transform.columns.3.z)
+//        }
+        
+        sceneView.scene.rootNode.addChildNode(node)
+        return node
+    }
+    
+    func vox2MV_Model() {
+        // get vox - file path
+        guard let path = Bundle.main.path(forResource: "dtga_113k", ofType: "vox") else {
+            print("Couldn't find path")
+            return
+        }
+        
+        let modelNode = SCNNode()
+        
+        let model:MV_Model = MV_Model()
+        let success = model.LoadModel(path: path)
+        if success {
+            
+            let unitScale:CGFloat = 0.4
+            
+            let boxGeometry = SCNBox(width: unitScale, height: unitScale, length: unitScale, chamferRadius: 0)
+            
+            if let voxels = model.voxels {
+                for v in voxels {
+            
+                    let boxGeometry = SCNBox(width: unitScale, height: unitScale, length: unitScale, chamferRadius: 0)
+                    let boxNode = SCNNode(geometry: boxGeometry)
+
+//                    if model.isCustomPalette {
+//                        let colorRGBA = model.palette[Int(v.colorIndex)]
+//                        boxGeometry.firstMaterial?.diffuse.contents = UIColor(red: CUnsignedInt(colorRGBA.r), green: CUnsignedInt(colorRGBA.g), blue: CUnsignedInt(colorRGBA.b), a: 255)
+//                    }
+//                    else
+//                    {
+//                        // adjust color index to be zero-indexed for the default palette
+//                        let colorHex = MV_Model.mv_default_palette[Int(v.colorIndex-1)]
+//                        boxGeometry.firstMaterial?.diffuse.contents = UIColor(colorHex: colorHex)
+//                    }
+//                    boxGeometry.firstMaterial?.diffuse.contents = UIColor(colorHex: colorHex)
+                    
+                    let mx = -CGFloat(v.x) + CGFloat(model.sizex)/2.0
+                    let my = CGFloat(v.z) - CGFloat(model.sizez)/2.0
+                    let mz = CGFloat(v.y) - CGFloat(model.sizey)/2.0
+                    
+                    boxNode.position = SCNVector3(mx*unitScale, my*unitScale, mz*unitScale)
+                    modelNode.addChildNode(boxNode)
+                }
+            }
+                        
+            let (_, modelNodeRadius) = modelNode.boundingSphere
+            let scale_change = 0.3 / modelNodeRadius
+
+            modelNode.scale = SCNVector3(modelNode.scale.x * scale_change,
+                                         modelNode.scale.y * scale_change,
+                                         modelNode.scale.z * scale_change)
+        }
+//        let flattened = modelNode.flattenedClone()
+        sceneView.scene.rootNode.addChildNode(modelNode)
+    }
+    
+    
+    
     // MARK: - Button Actions
     
     @objc func add(_sender: Any) {
+        // magica vox conversion and rendering testing
+        vox2MV_Model()
+        
+        
+        
+        // voxelization testing
 //        placeHeart()
 //        placePlane()
-        self.decodeTube = placeTube()!
-        voxelizeMesh(node: self.decodeTube)
+//        placeHeart()
+//        let (heartNode, heartNodeGrid) = voxelizeMesh(node: self.heartNode)
+//        self.decodeTube = placeTube()
+//        voxelize(node: self.decodeTube)
+        
+        
+        // testing to voxelize scnnode, turn them into surface meshes, and get their intersection
+//        self.decodeTube = placeTube()!
+//        self.testCube = placeCube()
+//
+//        let (dTube, decodeTubeGrid) = voxelizeMesh(node: self.decodeTube)
+//        let (tCube, testCubeGrid) = voxelizeMesh(node: self.testCube)
+//
+////        dTube.geometry?.materials = UIColor('red')
+//
+//        dTube.removeFromParentNode()
+//        tCube.removeFromParentNode()
+//
+//        decodeTubeGrid.intersect(with: testCubeGrid)
+//
+//        if let voxelMesh = decodeTubeGrid.mesh(using: nil) {   // retrieve voxel data
+//            // Create voxel parent node and add to scene
+//
+//            let asset = MDLAsset()
+//            asset.add(voxelMesh)
+//            print(asset.object(at: 0).boundingBox(atTime: 5))
+//            let tempNode = SCNNode(mdlObject: asset.object(at: 0))
+////            print(_voxels?.boundingSphere)
+//
+//            let (_, tempNodeRadius) = tempNode.boundingSphere
+//            let scale_change = 0.25 / tempNodeRadius
+//
+//            tempNode.scale = SCNVector3(tempNode.scale.x * scale_change,
+//                                        tempNode.scale.y * scale_change,
+//                                        tempNode.scale.z * scale_change)
+//
+//            tempNode.position = dTube.position
+//            sceneView.scene.rootNode.addChildNode(tempNode)
+//        }
+        
+        
         
 //        placeTube()
         
