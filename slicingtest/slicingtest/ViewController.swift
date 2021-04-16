@@ -493,14 +493,61 @@ class ViewController: UIViewController, ARSCNViewDelegate {
         sceneView.scene.rootNode.addChildNode(modelNode)
     }
     
+    func MDLVoxelModel() {
+        guard let path = Bundle.main.path(forResource: "dtga_72k", ofType: "vox") else {
+            print("Couldn't find path")
+            return
+        }
+                
+        let model:MDL_Model = MDL_Model()
+        let success = model.LoadModel(path: path)
+        if success {
+            let grid = model.getMDLVoxelArray()
+            model.Free()
+            print(grid!)
+            print(grid!.boundingBox)
+            print(grid!.count)
+            
+            
+            let node = getNodeFromVoxelMesh(grid: grid!)
+            placeNodeInFrontOfCamera(node: node!)
+        }
+    }
     
+    func getNodeFromVoxelMesh(grid: MDLVoxelArray) -> SCNNode? {
+        if let voxelMesh = grid.mesh(using: nil) {   // retrieve voxel data
+            // Create voxel parent node and add to scene
+            let asset = MDLAsset()
+            asset.add(voxelMesh)
+            print(asset.object(at: 0).boundingBox(atTime: 5))
+            let tempNode = SCNNode(mdlObject: asset.object(at: 0))
+            
+            return tempNode
+        }
+        
+        return nil
+    }
+    
+    func placeNodeInFrontOfCamera(node: SCNNode) {
+        if let currentFrame = sceneView.session.currentFrame {
+            
+            //Add node set distance in front of camera
+            var translation = matrix_identity_float4x4
+            translation.columns.3.x = 0
+            translation.columns.3.y = 0
+            translation.columns.3.z = -0.5
+            let transform = simd_mul(currentFrame.camera.transform, translation)
+            node.worldPosition = SCNVector3Make(transform.columns.3.x, transform.columns.3.y, transform.columns.3.z)
+            
+            sceneView.scene.rootNode.addChildNode(node)
+        }
+    }
     
     // MARK: - Button Actions
     
     @objc func add(_sender: Any) {
         // magica vox conversion and rendering testing
-        vox2MV_Model()
-        
+        MDLVoxelModel()
         
         
         // voxelization testing
